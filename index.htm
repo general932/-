@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>چت گروهی (تک گروه)</title>
+  <style>
+    :root{ --bg:#0f1724; --card:#0b1220; --accent:#06b6d4; --muted:#94a3b8; --me:#065f46; }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,'Noto Sans',sans-serif;background:linear-gradient(180deg,#071025 0%, #071a2a 100%);color:#e6eef6}
+    .app{max-width:900px;margin:24px auto;padding:18px;border-radius:12px;background:rgba(255,255,255,0.03);box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    header h1{font-size:20px;margin:0}
+    .room-info{font-size:13px;color:var(--muted)}
+    .chat{display:grid;grid-template-columns:1fr 260px;gap:12px}
+    .messages{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:12px;border-radius:10px;height:60vh;overflow:auto}
+    .message{padding:8px 12px;border-radius:12px;margin-bottom:8px;max-width:78%;word-break:break-word}
+    .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+    .me{background:linear-gradient(90deg,#064e3b,#047857);align-self:end;margin-left:auto;color:white}
+    .other{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03)}
+    .composer{display:flex;gap:8px;margin-top:10px}
+    .composer input[type=text]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .composer button{padding:10px 14px;border-radius:10px;border:none;background:var(--accent);color:#012;cursor:pointer}
+    .sidebar{display:flex;flex-direction:column;gap:10px}
+    .usercard{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px}
+    .presence{font-size:13px;color:var(--muted)}
+    .small{font-size:12px;color:var(--muted)}
+    .top-actions{display:flex;gap:8px}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px;color:var(--muted);cursor:pointer}
+    footer{margin-top:12px;text-align:center;font-size:13px;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>چت گروهی — فقط یک گروه</h1>
+        <div class="room-info">همه پیام‌ها در یک گروه مشترک نمایش داده می‌شود.</div>
+      </div>
+      <div class="top-actions">
+        <div class="small">نام شما: <strong id="me-name">?</strong></div>
+        <button id="change-name" class="btn-ghost">تغییر نام</button>
+      </div>
+    </header>
+
+    <div class="chat">
+      <div>
+        <div id="messages" class="messages" aria-live="polite"></div>
+
+        <div class="composer">
+          <input id="text" type="text" placeholder="پیام خود را بنویسید..." autocomplete="off" />
+          <button id="send">ارسال</button>
+        </div>
+      </div>
+
+      <aside class="sidebar">
+        <div class="usercard">
+          <div class="presence">افراد آنلاین: <span id="online-count">0</span></div>
+          <div class="small">شناسه شما: <span id="my-id">—</span></div>
+        </div>
+
+        <div class="usercard">
+          <div class="small">چند نکته:</div>
+          <ul class="small">
+            <li>این یک چت گروهی ساده است (بدون احراز هویت).</li>
+            <li>برای کار کردن نیاز به Firebase Realtime Database دارد (آزاد و رایگان برای تست).</li>
+            <li>پیام‌ها به صورت زنده برای همه بازدیدکننده‌ها نمایش داده می‌شوند.</li>
+          </ul>
+        </div>
+      </aside>
+    </div>
+
+    <footer>می‌خواهید که من نسخه‌ای بدون Firebase (با وب‌سوکت یا سرور محلی) بسازم؟</footer>
+  </div>
+
+  <!-- کتابخانهٔ Firebase (compat ساده برای استفاده در یک فایل) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+  <script>
+    /* ====== تنظیمات Firebase ======
+       1) یک پروژه در https://console.firebase.google.com بسازید
+       2) Realtime Database را فعال کنید و قواعد را برای تست باز بگذارید یا قواعد مناسب قرار دهید
+       3) مقدار زیر را با مقدار پیکربندی پروژهٔ خود جایگزین کنید
+    */
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+
+    // ---- Don't edit below unless you know what you're doing ----
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // عناصر UI
+    const messagesEl = document.getElementById('messages');
+    const textEl = document.getElementById('text');
+    const sendBtn = document.getElementById('send');
+    const meNameEl = document.getElementById('me-name');
+    const myIdEl = document.getElementById('my-id');
+    const onlineCountEl = document.getElementById('online-count');
+    const changeNameBtn = document.getElementById('change-name');
+
+    // شناسهٔ محلی برای هر بازدیدکننده
+    const myId = 'u_' + Math.random().toString(36).slice(2,10);
+    myIdEl.textContent = myId;
+
+    // نام نمایش (محلی؛ می‌توان آن را در localStorage نگه داشت)
+    let myName = localStorage.getItem('chat_name') || '';
+    if(!myName){
+      myName = prompt('اسم شما چیست؟ (نمایشی)') || ('کاربر-' + myId.slice(-4));
+      localStorage.setItem('chat_name', myName);
+    }
+    meNameEl.textContent = myName;
+
+    // مرجع‌ها در دیتابیس
+    const messagesRef = db.ref('group_chat/messages');
+    const presenceRef = db.ref('group_chat/presence/' + myId);
+    const presenceListRef = db.ref('group_chat/presence');
+
+    // ارسال پیام
+    function sendMessage(){
+      const text = textEl.value.trim();
+      if(!text) return;
+      const msg = {
+        fromId: myId,
+        fromName: myName,
+        text: text,
+        ts: Date.now()
+      };
+      messagesRef.push(msg).then(()=>{
+        textEl.value = '';
+      }).catch(err=>{
+        alert('ارسال پیام ناموفق: ' + err.message);
+      });
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    textEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') sendMessage(); });
+
+    // گوش دادن به پیام‌های جدید (نمایش مخاطره: فقط 100 پیام آخر)
+    messagesRef.limitToLast(200).on('child_added', snapshot => {
+      const m = snapshot.val();
+      appendMessage(m);
+      // اسکرول به پایین
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+
+    function timeString(ts){
+      const d = new Date(ts);
+      return d.toLocaleTimeString('fa-IR', {hour:'2-digit',minute:'2-digit'});
+    }
+
+    function appendMessage(m){
+      const div = document.createElement('div');
+      const isMe = m.fromId === myId;
+      div.className = 'message ' + (isMe ? 'me' : 'other');
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = m.fromName + ' · ' + timeString(m.ts);
+      const body = document.createElement('div');
+      body.textContent = m.text;
+      div.appendChild(meta);
+      div.appendChild(body);
+      messagesEl.appendChild(div);
+    }
+
+    // حضور (presence)
+    // ما یک گره presence برای هر کاربر می‌سازیم و با onDisconnect حذفش می‌کنیم
+    presenceRef.set({name: myName, ts: Date.now()});
+    presenceRef.onDisconnect().remove();
+
+    presenceListRef.on('value', snap => {
+      const v = snap.val() || {};
+      const keys = Object.keys(v);
+      onlineCountEl.textContent = keys.length;
+    });
+
+    // تغییر نام
+    changeNameBtn.addEventListener('click', ()=>{
+      const nm = prompt('نام جدید را وارد کنید:', myName);
+      if(nm && nm.trim()){ myName = nm.trim(); localStorage.setItem('chat_name', myName); meNameEl.textContent = myName; presenceRef.set({name: myName, ts: Date.now()}); }
+    });
+
+    // پاکسازی قدیمی‌ها (اختیاری): اگر خواستید قدیمی‌ترین پیام‌ها را پاک کنید می‌توانید از این مثال استفاده کنید
+    // messagesRef.limitToFirst(1000).once('value', snap => { /* مدیریت پاکسازی*/ });
+
+    // برای حالت آفلاین: اگر کاربر صفحه را ببندد onDisconnect حذف می‌شود و count بروزرسانی می‌شود.
+
+  </script>
+</body>
+</html>
